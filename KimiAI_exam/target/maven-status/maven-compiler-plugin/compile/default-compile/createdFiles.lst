@@ -1,0 +1,9 @@
+org\example\controller\WrongQuestionController.class
+org\example\config\MinioConfig.class
+org\example\config\MinioProperties.class
+org\example\service\impl\WrongQuestionServiceImpl.class
+org\example\service\impl\AiServiceImpl.class
+org\example\service\WrongQuestionService.class
+org\example\vo\WrongQuestionFavoriteRequest.class
+org\example\vo\WrongQuestionVo.class
+org\example\service\impl\WrongQuestionServiceImpl$1.class

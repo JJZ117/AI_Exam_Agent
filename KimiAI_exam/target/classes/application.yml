@@ -1,0 +1,17 @@
+﻿spring:
+  datasource:
+    url: jdbc:mysql://localhost:3306/exam_database
+    username: root
+    password: 123456
+
+minio:
+  end-point: http://192.168.116.130:9000
+  access-key: minioadmin
+  secret-key: minioadmin
+  bucket-name: onlinebuket
+kimi-api:
+  base-url: https://api.moonshot.cn/v1/chat/completions
+  api-key: sk-jb6Bh0eTmxLT8hPuYKwWg7G2m9Xd22K6pi0k81zVyJAOVsem
+  model: moonshot-v1-32k
+  temperature: 0.3
+  max-tokens: 4096

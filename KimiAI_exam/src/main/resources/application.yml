@@ -1,0 +1,14 @@
+﻿spring:
+  datasource:
+    url: jdbc:mysql://localhost:3306/exam_database
+    username: your_username
+    password: your_password
+
+kimi-api:
+  base-url: https://api.moonshot.cn/v1/chat/completions
+  api-key: sk-jb6Bh0eTmxLT8hPuYKwWg7G2m9Xd22K6pi0k81zVyJAOVsem
+  model: moonshot-v1-32k
+
+minio:
+  access-key: your_minio_access_key
+  secret-key: your_minio_secret_key

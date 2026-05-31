@@ -1,0 +1,244 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Online Exam</title>
+    <style>
+        body { font-family: "Microsoft YaHei", sans-serif; max-width: 960px; margin: 30px auto; line-height: 1.7; color: #222; }
+        .toolbar { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 18px; flex-wrap: wrap; }
+        .toolbar-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+        .question { border: 1px solid #ddd; border-radius: 10px; padding: 16px; margin-bottom: 16px; background: #fff; }
+        .title { font-weight: bold; margin-bottom: 12px; }
+        .choice { display: block; margin: 8px 0; }
+        textarea { width: 100%; min-height: 96px; padding: 10px; box-sizing: border-box; }
+        .result { margin-top: 12px; padding: 10px 12px; border-radius: 8px; }
+        .correct { background: #ecfdf3; color: #0f7b3a; }
+        .wrong { background: #fff1f2; color: #b42318; }
+        .pending { background: #f5f5f5; color: #555; }
+        button, .link-button { padding: 10px 18px; cursor: pointer; border-radius: 8px; border: 1px solid #d0d5dd; background: #fff; color: #222; text-decoration: none; }
+        button.primary { background: #1677ff; color: #fff; border-color: #1677ff; }
+        button.collect-btn { margin-top: 10px; background: #fff7e6; border-color: #ffd591; color: #ad6800; }
+        button.collect-btn[disabled] { cursor: not-allowed; opacity: 0.7; }
+        #summary { margin: 18px 0; font-weight: bold; }
+        #status { color: #666; margin: 6px 0 0; }
+    </style>
+</head>
+<body>
+<div class="toolbar">
+    <div>
+        <h2 style="margin: 0;">Exam</h2>
+        <p id="status">Loading exam...</p>
+    </div>
+    <div class="toolbar-actions">
+        <a class="link-button" href="ai.html">Back To Builder</a>
+        <a class="link-button" href="wrong-book.html">Wrong Question Book</a>
+    </div>
+</div>
+<div id="summary"></div>
+<div id="questions"></div>
+<button class="primary" onclick="submitAnswers()">Submit Answers</button>
+
+<script>
+    let questions = [];
+    const answers = {};
+    const resultsMap = {};
+    const favoriteMap = {};
+    const userKey = getOrCreateUserKey();
+
+    window.onload = async function () {
+        await loadFavorites();
+        await loadExam();
+    };
+
+    async function loadExam() {
+        const id = new URLSearchParams(location.search).get('id');
+        const status = document.getElementById('status');
+
+        if (!id) {
+            status.textContent = 'Missing exam ID. Unable to load questions.';
+            return;
+        }
+
+        try {
+            const response = await fetch('/api/exam/' + id);
+            const json = await response.json();
+            questions = (json.data && json.data.questions) || [];
+
+            if (!response.ok || json.code !== 200) {
+                throw new Error(json.msg || 'Failed to load exam');
+            }
+
+            if (questions.length === 0) {
+                status.textContent = 'This exam has no questions. Please generate it again.';
+                return;
+            }
+
+            status.textContent = 'Exam loaded successfully. Total questions: ' + questions.length + '.';
+            renderQuestions();
+        } catch (error) {
+            status.textContent = error.message || 'Failed to load exam';
+        }
+    }
+
+    async function loadFavorites() {
+        try {
+            const response = await fetch('/api/wrong-questions?userKey=' + encodeURIComponent(userKey));
+            const json = await response.json();
+            if (!response.ok || json.code !== 200) {
+                throw new Error(json.msg || 'Failed to load wrong question book');
+            }
+
+            (json.data || []).forEach(item => {
+                favoriteMap[item.questionId] = true;
+            });
+        } catch (error) {
+            console.error(error);
+        }
+    }
+
+    function renderQuestions() {
+        const div = document.getElementById('questions');
+        div.innerHTML = '';
+
+        questions.forEach((q, index) => {
+            const result = resultsMap[q.id];
+            let html = `<div class="question">`;
+            html += `<div class="title">${index + 1}. ${escapeHtml(q.title || '')}</div>`;
+
+            if (q.type === 'CHOICE') {
+                const choices = q.choices || [];
+                choices.forEach(c => {
+                    const checked = answers[q.id] === c.content ? 'checked' : '';
+                    html += `<label class="choice"><input type="radio" name="q_${q.id}" value="${escapeAttr(c.content)}" ${checked} onchange="selectAnswer(${q.id}, this.value)"> ${escapeHtml(c.content)}</label>`;
+                });
+            }
+
+            if (q.type === 'JUDGE') {
+                html += `<label class="choice"><input type="radio" name="q_${q.id}" value="true" ${answers[q.id] === 'true' ? 'checked' : ''} onchange="selectAnswer(${q.id}, this.value)"> True</label>`;
+                html += `<label class="choice"><input type="radio" name="q_${q.id}" value="false" ${answers[q.id] === 'false' ? 'checked' : ''} onchange="selectAnswer(${q.id}, this.value)"> False</label>`;
+            }
+
+            if (q.type === 'TEXT') {
+                html += `<textarea oninput="inputAnswer(${q.id}, this.value)">${escapeHtml(answers[q.id] || '')}</textarea>`;
+            }
+
+            if (result) {
+                const cssClass = result.correct === true ? 'correct' : (result.correct === false ? 'wrong' : 'pending');
+                const label = result.correct === true ? 'Correct answer' : (result.correct === false ? 'Wrong answer' : 'Subjective question. Auto grading is not available.');
+                html += `<div class="result ${cssClass}">${label}`;
+                if (result.correct === false) {
+                    html += `<br>Your answer: ${escapeHtml(result.userAnswer || 'Not answered')}`;
+                    html += `<br>Correct answer: ${escapeHtml(result.correctAnswer || '')}`;
+                    if (result.analysis) {
+                        html += `<br>Explanation: ${escapeHtml(result.analysis)}`;
+                    }
+                    html += `<br><button class="collect-btn" onclick="favoriteWrongQuestion(${q.id})" ${favoriteMap[q.id] ? 'disabled' : ''}>${favoriteMap[q.id] ? 'Saved To Wrong Question Book' : 'Save To Wrong Question Book'}</button>`;
+                }
+                html += `</div>`;
+            }
+
+            html += `</div>`;
+            div.innerHTML += html;
+        });
+    }
+
+    function selectAnswer(id, value) {
+        answers[id] = value;
+    }
+
+    function inputAnswer(id, value) {
+        answers[id] = value;
+    }
+
+    async function submitAnswers() {
+        const payload = questions.map(q => ({
+            questionId: q.id,
+            userAnswer: answers[q.id] || ''
+        }));
+
+        if (payload.length === 0) {
+            alert('There are no questions to submit');
+            return;
+        }
+
+        try {
+            const response = await fetch('/api/questions/submit', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            const json = await response.json();
+
+            if (!response.ok || json.code !== 200) {
+                throw new Error(json.msg || 'Submission failed');
+            }
+
+            const results = json.data || [];
+            results.forEach(item => {
+                resultsMap[item.questionId] = item;
+            });
+
+            const autoChecked = results.filter(item => item.correct !== null);
+            const correctCount = autoChecked.filter(item => item.correct === true).length;
+            document.getElementById('summary').textContent = `Auto grading result: ${correctCount} / ${autoChecked.length} correct`;
+            renderQuestions();
+        } catch (error) {
+            alert(error.message || 'Submission failed');
+        }
+    }
+
+    async function favoriteWrongQuestion(questionId) {
+        const result = resultsMap[questionId];
+        if (!result || result.correct !== false) {
+            alert('Only incorrectly answered questions can be saved');
+            return;
+        }
+
+        try {
+            const response = await fetch('/api/wrong-questions/favorite', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    userKey,
+                    questionId,
+                    userAnswer: result.userAnswer || ''
+                })
+            });
+            const json = await response.json();
+
+            if (!response.ok || json.code !== 200) {
+                throw new Error(json.msg || 'Failed to save');
+            }
+
+            favoriteMap[questionId] = true;
+            renderQuestions();
+            alert('Saved to the wrong question book and synced to the MinIO bucket');
+        } catch (error) {
+            alert(error.message || 'Failed to save');
+        }
+    }
+
+    function getOrCreateUserKey() {
+        let current = localStorage.getItem('wrongQuestionUserKey');
+        if (!current) {
+            current = 'browser-' + Math.random().toString(36).slice(2, 10);
+            localStorage.setItem('wrongQuestionUserKey', current);
+        }
+        return current;
+    }
+
+    function escapeHtml(value) {
+        return String(value)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
+    function escapeAttr(value) {
+        return escapeHtml(value);
+    }
+</script>
+</body>
+</html>
